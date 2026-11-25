@@ -27,7 +27,7 @@ object PhysicsStep {
             car.boostFuel
         }
 
-        val invScale = 1f / track.worldScale.coerceAtLeast(1f)
+        val invScale = 1f / track.worldScale.coerceAtLeast(0.1f)
         val boostMult = if (boosting) car.stats.boostPower else 1f
         val effectiveMaxSpeed = car.stats.maxSpeed * invScale * car.condition.engineHealth * boostMult * maxSpeedScale
         val offTrack = isOffTrack(car.pos, track)
@@ -43,11 +43,14 @@ object PhysicsStep {
         // 3. Auto-Accelerate & Softer Brake (no reverse)
         val newFwd = Vec2(cos(newHeading), sin(newHeading))
         var vel = car.vel
-        if (input.brake) {
+        val brakingToTargetSpeed = car.finished && car.finishedTimer >= 2.0f && vel.length() > effectiveMaxSpeed
+        if (input.brake || brakingToTargetSpeed) {
             val spd = vel.length()
             if (spd > 0f) {
-                val decel = car.stats.acceleration * invScale * 0.9f * dt
-                val nextSpd = (spd - decel).coerceAtLeast(0f)
+                val brakeScale = if (brakingToTargetSpeed) 0.45f else 0.9f
+                val decel = car.stats.acceleration * invScale * brakeScale * dt
+                val minSpd = if (brakingToTargetSpeed) effectiveMaxSpeed else 0f
+                val nextSpd = (spd - decel).coerceAtLeast(minSpd)
                 vel = if (nextSpd > 0f) vel * (nextSpd / spd) else Vec2(0f, 0f)
             }
         } else {
@@ -61,7 +64,7 @@ object PhysicsStep {
         vel *= dragFactor
 
         val speed = vel.length()
-        if (speed > effectiveMaxSpeed) {
+        if (!brakingToTargetSpeed && speed > effectiveMaxSpeed) {
             vel = vel.normalized() * effectiveMaxSpeed
         }
 
@@ -102,7 +105,7 @@ object PhysicsStep {
                 )
             }
 
-            for (obs in track.obstacles) {
+            for (obs in track.allObstacles()) {
                 val delta = pos - obs.pos
                 val dist = delta.length()
                 val minDist = (CAR_RADIUS * invScale) + obs.radius
@@ -149,6 +152,7 @@ object PhysicsStep {
             vz = vz,
             boostFuel = newBoostFuel,
             stuckTimer = stuckTimer,
+            finishedTimer = if (car.finished) car.finishedTimer + dt else 0f,
             isBoosting = boosting
         )
     }
@@ -164,7 +168,7 @@ object PhysicsStep {
             if (d < minDist) minDist = d
         }
         // Road half-width + ~5% track width margin
-        val roadMargin = (track.trackWidthNorm * 0.55f).coerceAtLeast(0.05f / track.worldScale.coerceAtLeast(1f))
+        val roadMargin = (track.trackWidthNorm * 0.55f).coerceAtLeast(0.05f / track.worldScale.coerceAtLeast(0.1f))
         return minDist > roadMargin
     }
 

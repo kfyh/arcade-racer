@@ -32,46 +32,80 @@ fun GameCanvas(
     Canvas(modifier = modifier.clipToBounds()) {
         val w = size.width
         val h = size.height
-        val invScale = 1f / track.worldScale.coerceAtLeast(1f)
+        val invScale = 1f / track.worldScale.coerceAtLeast(0.1f)
 
-        if (cameraZoom <= 1.01f) {
-            // Unfolded / Tablet overview: whole track fills the canvas
+        // Unified camera-follow rendering: preserve square world aspect ratio and cover canvas
+        val worldSize = maxOf(w, h) * cameraZoom
+        val offsetX = (w * 0.5f) - (cameraPos.x * worldSize)
+        val offsetY = (h * 0.5f) - (cameraPos.y * worldSize)
+
+        withTransform({
+            translate(left = offsetX, top = offsetY)
+        }) {
             drawImage(
                 image = trackBitmap,
-                dstSize = IntSize(w.toInt().coerceAtLeast(1), h.toInt().coerceAtLeast(1))
+                dstSize = IntSize(worldSize.toInt().coerceAtLeast(1), worldSize.toInt().coerceAtLeast(1))
             )
+            drawFinishLine(track, worldSize, worldSize)
             if (showDebugOverlay) {
                 val humanCar = cars.firstOrNull { it.isHuman }
-                drawDebugOverlay(track, humanCar, w, h)
+                drawDebugOverlay(track, humanCar, worldSize, worldSize)
             }
             val sortedCars = cars.sortedBy { it.z }
             for (car in sortedCars) {
-                drawCar(car, w, h, invScale)
-            }
-        } else {
-            // Zoomed camera mode: preserve square world aspect ratio
-            val worldW = w * cameraZoom
-            val worldH = w * cameraZoom
-            val offsetX = (w * 0.5f) - (cameraPos.x * worldW)
-            val offsetY = (h * 0.5f) - (cameraPos.y * worldH)
-
-            withTransform({
-                translate(left = offsetX, top = offsetY)
-            }) {
-                drawImage(
-                    image = trackBitmap,
-                    dstSize = IntSize(worldW.toInt().coerceAtLeast(1), worldH.toInt().coerceAtLeast(1))
-                )
-                if (showDebugOverlay) {
-                    val humanCar = cars.firstOrNull { it.isHuman }
-                    drawDebugOverlay(track, humanCar, worldW, worldH)
-                }
-                val sortedCars = cars.sortedBy { it.z }
-                for (car in sortedCars) {
-                    drawCar(car, worldW, worldH, invScale)
-                }
+                drawCar(car, worldSize, worldSize, invScale)
             }
         }
+    }
+}
+
+private fun DrawScope.drawFinishLine(
+    track: TrackMetadata,
+    w: Float,
+    h: Float
+) {
+    val invScale = 1f / track.worldScale.coerceAtLeast(0.1f)
+    val halfWidth = track.finishLineHalfWidth()
+    val lineDepth = 0.028f * invScale * w
+    val lineLength = halfWidth * 2f * w
+    val cx = track.finishLine.pos.x * w
+    val cy = track.finishLine.pos.y * h
+
+    withTransform({
+        translate(left = cx, top = cy)
+        rotate(degrees = track.finishLine.heading * 180f / PI.toFloat(), pivot = Offset.Zero)
+    }) {
+        val cols = 2
+        val rows = ((lineLength / (lineDepth * 0.5f)).toInt()).coerceAtLeast(6)
+        val cellW = lineDepth / cols
+        val cellH = lineLength / rows
+        val startX = -lineDepth * 0.5f
+        val startY = -lineLength * 0.5f
+
+        for (c in 0 until cols) {
+            for (r in 0 until rows) {
+                val isLight = (c + r) % 2 == 0
+                drawRect(
+                    color = if (isLight) Color(0xFFF5F5F5) else Color(0xFF1E1E1E),
+                    topLeft = Offset(startX + c * cellW, startY + r * cellH),
+                    size = Size(cellW, cellH)
+                )
+            }
+        }
+    }
+
+    for (pole in track.finishLinePoles()) {
+        val px = pole.pos.x * w
+        val py = pole.pos.y * h
+        val r = pole.radius * w
+        drawCircle(color = Color(0xFFF5F5F5), radius = r, center = Offset(px, py))
+        drawCircle(color = Color(0xFFF05F23), radius = r * 0.65f, center = Offset(px, py))
+        drawCircle(
+            color = Color(0xFF212121),
+            radius = r,
+            center = Offset(px, py),
+            style = Stroke(width = 1.5f)
+        )
     }
 }
 
@@ -81,11 +115,12 @@ private fun DrawScope.drawDebugOverlay(
     w: Float,
     h: Float
 ) {
-    // Start line
+    // Finish line
+    val (gateA, gateB) = track.finishLineSegment()
     drawLine(
         color = Color.White,
-        start = Offset(track.startLine.a.x * w, track.startLine.a.y * h),
-        end = Offset(track.startLine.b.x * w, track.startLine.b.y * h),
+        start = Offset(gateA.x * w, gateA.y * h),
+        end = Offset(gateB.x * w, gateB.y * h),
         strokeWidth = 4f
     )
 
@@ -110,7 +145,7 @@ private fun DrawScope.drawDebugOverlay(
     }
 
     // Obstacles (red)
-    for (obs in track.obstacles) {
+    for (obs in track.allObstacles()) {
         drawCircle(
             color = Color.Red.copy(alpha = 0.85f),
             radius = obs.radius * w,

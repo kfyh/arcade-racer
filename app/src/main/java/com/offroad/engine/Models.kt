@@ -1,6 +1,9 @@
 package com.offroad.engine
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Serializable
 enum class SurfaceType(val grip: Float, val drag: Float) {
@@ -50,9 +53,11 @@ data class CarState(
     val currentLapTime: Float = 0f,
     val lastLapTime: Float? = null,
     val bestLapTime: Float? = null,
+    val lapTimes: List<Float> = emptyList(),
     val awaitingFinishLine: Boolean = false,
     val invalidLapReason: String = "",
     val finished: Boolean = false,
+    val finishedTimer: Float = 0f,
     val finishOrder: Int = 0,
     val isBoosting: Boolean = false,
     val stats: CarStats = CarStats(),
@@ -67,9 +72,8 @@ data class InputState(
 )
 
 @Serializable
-data class LineSegment(
-    val a: Vec2,
-    val b: Vec2,
+data class FinishLineNode(
+    val pos: Vec2,
     val heading: Float = 0f
 )
 
@@ -119,12 +123,34 @@ data class TrackMetadata(
     val name: String,
     val laps: Int = 3,
     val trackWidthNorm: Float = 0.14f,
+    @Transient
     val worldScale: Float = 1.0f,
     val defaultSurface: SurfaceType = SurfaceType.DIRT,
     val waypoints: List<Vec2> = emptyList(),
-    val startLine: LineSegment = LineSegment(Vec2(0.5f, 0.7f), Vec2(0.5f, 0.85f), 0f),
+    val finishLine: FinishLineNode = FinishLineNode(Vec2(0.5f, 0.775f), 0f),
     val obstacles: List<CircleObstacle> = emptyList(),
     val ramps: List<RampZone> = emptyList(),
     val gaps: List<GapZone> = emptyList(),
     val surfaces: List<SurfaceZone> = emptyList()
-)
+) {
+    fun finishLineHalfWidth(): Float = trackWidthNorm * 0.75f
+
+    fun finishLineSegment(): Pair<Vec2, Vec2> {
+        val perp = Vec2(-sin(finishLine.heading), cos(finishLine.heading))
+        val hw = finishLineHalfWidth()
+        return (finishLine.pos - perp * hw) to (finishLine.pos + perp * hw)
+    }
+
+    fun finishLinePoles(): List<CircleObstacle> {
+        val invScale = 1f / worldScale.coerceAtLeast(0.1f)
+        val postRadius = 0.015f * invScale
+        val poleOffset = finishLineHalfWidth() + postRadius * 0.5f
+        val perp = Vec2(-sin(finishLine.heading), cos(finishLine.heading))
+        return listOf(
+            CircleObstacle(finishLine.pos - perp * poleOffset, postRadius),
+            CircleObstacle(finishLine.pos + perp * poleOffset, postRadius)
+        )
+    }
+
+    fun allObstacles(): List<CircleObstacle> = obstacles + finishLinePoles()
+}

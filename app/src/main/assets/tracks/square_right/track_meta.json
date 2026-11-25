@@ -1,8 +1,7 @@
 {
   "name": "Square Circuit (Ice)",
   "laps": 6,
-  "trackWidthNorm": 0.13,
-  "worldScale": 1.0,
+  "trackWidthNorm": 0.125,
   "defaultSurface": "ICE",
   "waypoints": [
     {
@@ -70,14 +69,10 @@
       "y": 0.2
     }
   ],
-  "startLine": {
-    "a": {
+  "finishLine": {
+    "pos": {
       "x": 0.5,
-      "y": 0.136
-    },
-    "b": {
-      "x": 0.5,
-      "y": 0.264
+      "y": 0.2
     },
     "heading": 0.0
   },
@@ -88,20 +83,6 @@
         "y": 0.5
       },
       "radius": 0.045
-    },
-    {
-      "pos": {
-        "x": 0.5,
-        "y": 0.122
-      },
-      "radius": 0.015
-    },
-    {
-      "pos": {
-        "x": 0.5,
-        "y": 0.278
-      },
-      "radius": 0.015
     }
   ],
   "ramps": [],

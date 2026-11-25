@@ -17,7 +17,7 @@ class RaceManagerTest {
                 Vec2(0.25f, 0.25f),
                 Vec2(0.25f, 0.75f)
             ),
-            startLine = LineSegment(Vec2(0.45f, 0.70f), Vec2(0.45f, 0.80f), heading = 0f)
+            finishLine = FinishLineNode(Vec2(0.45f, 0.75f), heading = 0f)
         )
     }
 
@@ -87,7 +87,7 @@ class RaceManagerTest {
                 Vec2(0.7f, 0.8f), Vec2(0.8f, 0.5f), Vec2(0.7f, 0.2f),
                 Vec2(0.3f, 0.2f), Vec2(0.2f, 0.5f), Vec2(0.3f, 0.8f)
             ),
-            startLine = LineSegment(Vec2(0.5f, 0.75f), Vec2(0.5f, 0.85f), 0f)
+            finishLine = FinishLineNode(Vec2(0.5f, 0.80f), 0f)
         )
         val car = CarState(
             id = 0, name = "A", isHuman = true, colorHex = 0xFFE53935L,
@@ -112,7 +112,7 @@ class RaceManagerTest {
                 Vec2(0.7f, 0.8f), Vec2(0.8f, 0.5f), Vec2(0.7f, 0.2f),
                 Vec2(0.3f, 0.2f), Vec2(0.2f, 0.5f), Vec2(0.3f, 0.8f)
             ),
-            startLine = LineSegment(Vec2(0.5f, 0.75f), Vec2(0.5f, 0.85f), 0f)
+            finishLine = FinishLineNode(Vec2(0.5f, 0.80f), 0f)
         )
         val car = CarState(
             id = 0, name = "A", isHuman = true, colorHex = 0xFFE53935L,
@@ -137,7 +137,7 @@ class RaceManagerTest {
                 Vec2(0.7f, 0.8f), Vec2(0.8f, 0.5f), Vec2(0.7f, 0.2f),
                 Vec2(0.3f, 0.2f), Vec2(0.2f, 0.5f), Vec2(0.3f, 0.8f)
             ),
-            startLine = LineSegment(Vec2(0.5f, 0.75f), Vec2(0.5f, 0.85f), 0f)
+            finishLine = FinishLineNode(Vec2(0.5f, 0.80f), 0f)
         )
         val car = CarState(
             id = 0,
@@ -168,7 +168,7 @@ class RaceManagerTest {
                 Vec2(0.7f, 0.8f), Vec2(0.8f, 0.5f), Vec2(0.7f, 0.2f),
                 Vec2(0.3f, 0.2f), Vec2(0.2f, 0.5f), Vec2(0.3f, 0.8f)
             ),
-            startLine = LineSegment(Vec2(0.5f, 0.75f), Vec2(0.5f, 0.85f), 0f)
+            finishLine = FinishLineNode(Vec2(0.5f, 0.80f), 0f)
         )
         val validCar = CarState(
             id = 0, name = "Valid", isHuman = true, colorHex = 0xFFE53935L,
@@ -181,6 +181,8 @@ class RaceManagerTest {
         val afterValid = manager.cars.first()
         assertEquals(2, afterValid.lap)
         assertEquals(12.5f + 1f / 60f, afterValid.bestLapTime!!, 1e-3f)
+        assertEquals(1, afterValid.lapTimes.size)
+        assertEquals(afterValid.bestLapTime!!, afterValid.lapTimes.first(), 1e-3f)
         assertEquals(0f, afterValid.currentLapTime, 1e-4f)
 
         // Now complete an invalid lap faster (5.0s) -> must NOT overwrite bestLapTime
@@ -223,5 +225,67 @@ class RaceManagerTest {
         }
 
         assertTrue("Race should finish after 2x estimated lap time timeout", manager.raceFinished)
+    }
+
+    @Test
+    fun carDoesNotFinishBeforeVisibleBoundingBoxReachesFinishLine() {
+        val track = loopTrack(laps = 1)
+        // Finish line is at x = 0.45, y = 0.75. Car half-length = 0.022.
+        // Place car approaching at x = 0.40 (front bumper at 0.422, clearly before x = 0.45)
+        val approachingCar = CarState(
+            id = 0, name = "A", isHuman = true, colorHex = 0xFFE53935L,
+            pos = Vec2(0.40f, 0.75f), vel = Vec2(0.2f, 0f),
+            heading = 0f, lap = 1, nextWaypointIndex = 0, awaitingFinishLine = true
+        )
+        val manager = RaceManager(track = track, initialCars = listOf(approachingCar), countdownTimer = 0f)
+        manager.step(InputState(), 1f / 60f)
+
+        val afterApproach = manager.cars.first()
+        assertTrue("Car should NOT finish before its bounding box reaches the finish line", !afterApproach.finished)
+        assertEquals(1, afterApproach.lap)
+
+        // Now place car so its front bumper crosses x = 0.45 (center at 0.435 -> front at 0.457)
+        val crossingCar = afterApproach.copy(pos = Vec2(0.435f, 0.75f))
+        val manager2 = RaceManager(track = track, initialCars = listOf(crossingCar), countdownTimer = 0f)
+        manager2.step(InputState(), 1f / 60f)
+
+        val afterCross = manager2.cars.first()
+        assertTrue("Car SHOULD finish once its visible bounding box crosses the finish line", afterCross.finished)
+    }
+
+    @Test
+    fun finishLineExtendsBeyondTrackAndPolesAreOutsideTrack() {
+        val track = loopTrack(laps = 1)
+        val (a, b) = track.finishLineSegment()
+        val lineLength = a.distanceTo(b)
+        assertTrue("Finish line should extend beyond trackWidthNorm", lineLength > track.trackWidthNorm)
+
+        val poles = track.finishLinePoles()
+        assertEquals(2, poles.size)
+        for (pole in poles) {
+            val distFromCenter = pole.pos.distanceTo(track.finishLine.pos)
+            assertTrue(
+                "Pole inner edge should be outside track half-width",
+                distFromCenter - pole.radius > track.trackWidthNorm * 0.5f
+            )
+        }
+    }
+
+    @Test
+    fun aiTakesOverDrivingAfterHumanFinishes() {
+        val track = loopTrack(laps = 1)
+        // Human car has finished, facing straight (+x) but next waypoint is up-right (0.75, 0.25)
+        val finishedHuman = CarState(
+            id = 0, name = "YOU", isHuman = true, colorHex = 0xFFE53935L,
+            pos = Vec2(0.75f, 0.75f), heading = 0f,
+            nextWaypointIndex = 1, finished = true, finishOrder = 1
+        )
+        val manager = RaceManager(track = track, initialCars = listOf(finishedHuman), countdownTimer = 0f)
+        // Pass empty humanInput; AI should steer toward waypoint 1 (negative y -> negative heading)
+        repeat(10) {
+            manager.step(InputState(), 1f / 60f)
+        }
+        val after = manager.cars.first()
+        assertTrue("AI should steer finished human car toward next waypoint", after.heading < -0.05f)
     }
 }

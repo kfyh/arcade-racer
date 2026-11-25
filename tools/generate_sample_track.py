@@ -79,14 +79,6 @@ def generate_track(out_path: str) -> None:
             if d_road < 0.068:
                 r, g, b = 142 + noise // 2, 98 + noise // 2, 60 + noise // 2
 
-            # Start/Finish checkered line at bottom-center waist (x ~ 0.50, y in [0.58, 0.72])
-            if 0.485 <= nx <= 0.515 and 0.58 <= ny <= 0.72:
-                checker = ((x // 8) + (y // 8)) % 2 == 0
-                if checker:
-                    r, g, b = 245, 245, 245
-                else:
-                    r, g, b = 30, 30, 30
-
             for ox, oy, orad in obstacles:
                 if math.hypot(nx - ox, ny - oy) <= orad:
                     r, g, b = 78, 74, 70

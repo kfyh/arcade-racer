@@ -1,8 +1,7 @@
 {
   "name": "Grand C-Horseshoe (Dirt)",
   "laps": 4,
-  "trackWidthNorm": 0.066,
-  "worldScale": 2.0,
+  "trackWidthNorm": 0.0625,
   "defaultSurface": "DIRT",
   "waypoints": [
     {
@@ -134,33 +133,14 @@
       "y": 0.88
     }
   ],
-  "startLine": {
-    "a": {
+  "finishLine": {
+    "pos": {
       "x": 0.48,
-      "y": 0.85
-    },
-    "b": {
-      "x": 0.48,
-      "y": 0.91
+      "y": 0.88
     },
     "heading": 0.0
   },
-  "obstacles": [
-    {
-      "pos": {
-        "x": 0.48,
-        "y": 0.843
-      },
-      "radius": 0.0075
-    },
-    {
-      "pos": {
-        "x": 0.48,
-        "y": 0.917
-      },
-      "radius": 0.0075
-    }
-  ],
+  "obstacles": [],
   "ramps": [],
   "gaps": [],
   "surfaces": []

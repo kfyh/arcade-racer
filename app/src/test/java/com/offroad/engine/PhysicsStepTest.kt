@@ -173,4 +173,37 @@ class PhysicsStepTest {
         assertTrue("Car heading should turn > 0.8 rad in 0.25s (got ${car.heading})", car.heading > 0.8f)
         assertTrue("Car velocity should redirect toward +y after turning right (vy=${car.vel.y})", car.vel.y > 0.02f)
     }
+
+    @Test
+    fun finishedCarGraduallyBrakesToTargetCooldownSpeed() {
+        val track = simpleTrack()
+        val maxSpeedScale = 0.35f
+        val targetSpeed = CarStats().maxSpeed * maxSpeedScale
+        var car = CarState(
+            id = 0,
+            name = "Finisher",
+            isHuman = true,
+            colorHex = 0xFFE53935L,
+            pos = Vec2(0.5f, 0.5f),
+            vel = Vec2(CarStats().maxSpeed, 0f),
+            heading = 0f,
+            finished = true
+        )
+
+        // During the first 2 seconds after finishing, car maintains full speed (no cooldown braking yet)
+        repeat(119) {
+            car = PhysicsStep.stepCar(car, InputState(), track, 1f / 60f, maxSpeedScale = 1f)
+        }
+        assertEquals(CarStats().maxSpeed, car.vel.length(), 0.02f)
+
+        // After the 2s delay, 1 frame of cooldown braking should not snap to targetSpeed
+        car = PhysicsStep.stepCar(car, InputState(), track, 1f / 60f, maxSpeedScale = maxSpeedScale)
+        assertTrue("Finished car should not snap to target speed in 1 frame", car.vel.length() > targetSpeed * 1.5f)
+
+        // After ~1.5 seconds of braking, car should settle smoothly down to ~targetSpeed
+        repeat(90) {
+            car = PhysicsStep.stepCar(car, InputState(), track, 1f / 60f, maxSpeedScale = maxSpeedScale)
+        }
+        assertEquals(targetSpeed, car.vel.length(), 0.02f)
+    }
 }

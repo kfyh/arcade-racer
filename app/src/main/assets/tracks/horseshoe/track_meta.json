@@ -2,7 +2,6 @@
   "name": "Ironman Horseshoe (Dirt)",
   "laps": 6,
   "trackWidthNorm": 0.125,
-  "worldScale": 1.0,
   "defaultSurface": "DIRT",
   "waypoints": [
     {
@@ -86,14 +85,10 @@
       "y": 0.83
     }
   ],
-  "startLine": {
-    "a": {
+  "finishLine": {
+    "pos": {
       "x": 0.5,
-      "y": 0.772
-    },
-    "b": {
-      "x": 0.5,
-      "y": 0.888
+      "y": 0.83
     },
     "heading": 0.0
   },
@@ -104,23 +99,24 @@
         "y": 0.27
       },
       "radius": 0.036
-    },
-    {
-      "pos": {
-        "x": 0.5,
-        "y": 0.758
-      },
-      "radius": 0.015
-    },
-    {
-      "pos": {
-        "x": 0.5,
-        "y": 0.902
-      },
-      "radius": 0.015
     }
   ],
-  "ramps": [],
+  "ramps": [
+    {
+      "x": 0.089,
+      "y": 0.46,
+      "width": 0.056,
+      "height": 0.08,
+      "impulse": 0.45
+    },
+    {
+      "x": 0.855,
+      "y": 0.46,
+      "width": 0.056,
+      "height": 0.08,
+      "impulse": 0.45
+    }
+  ],
   "gaps": [],
   "surfaces": []
 }

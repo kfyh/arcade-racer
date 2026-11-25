@@ -1,8 +1,7 @@
 {
   "name": "Phillip Island (Road)",
   "laps": 4,
-  "trackWidthNorm": 0.056,
-  "worldScale": 2.5,
+  "trackWidthNorm": 0.05,
   "defaultSurface": "ASPHALT",
   "waypoints": [
     {
@@ -150,33 +149,14 @@
       "y": 0.62
     }
   ],
-  "startLine": {
-    "a": {
+  "finishLine": {
+    "pos": {
       "x": 0.42,
-      "y": 0.594
-    },
-    "b": {
-      "x": 0.42,
-      "y": 0.646
+      "y": 0.62
     },
     "heading": 0.0
   },
-  "obstacles": [
-    {
-      "pos": {
-        "x": 0.42,
-        "y": 0.5884
-      },
-      "radius": 0.006
-    },
-    {
-      "pos": {
-        "x": 0.42,
-        "y": 0.6516
-      },
-      "radius": 0.006
-    }
-  ],
+  "obstacles": [],
   "ramps": [],
   "gaps": [],
   "surfaces": []

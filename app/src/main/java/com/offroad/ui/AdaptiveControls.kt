@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
  * - Left 40%: Hold to steer LEFT
  * - Middle 20%: Deadzone (no steering)
  * - Right 40%: Hold to steer RIGHT
- * - Swipe up (detected immediately on upward motion): Trigger BOOST
+ * - Swipe up (registered on finger lift): Trigger BOOST
  */
 @Composable
 fun TouchSteerAndBoostOverlay(
@@ -43,6 +43,7 @@ fun TouchSteerAndBoostOverlay(
                 awaitPointerEventScope {
                     val pointerX = mutableMapOf<Long, Float>()
                     val pointerStartY = mutableMapOf<Long, Float>()
+                    val swipingUp = mutableSetOf<Long>()
 
                     while (true) {
                         val event = awaitPointerEvent()
@@ -55,15 +56,20 @@ fun TouchSteerAndBoostOverlay(
                                 event.type != PointerEventType.Release &&
                                 event.type != PointerEventType.Exit
                             if (active) {
-                                pointerX[id] = change.position.x
                                 val startY = pointerStartY.getOrPut(id) { change.position.y }
                                 if (change.position.y - startY < -swipeThresholdPx) {
-                                    swipeUpTriggered = true
-                                    pointerStartY[id] = change.position.y
+                                    swipingUp.add(id)
+                                    pointerX.remove(id)
+                                } else if (id !in swipingUp) {
+                                    pointerX[id] = change.position.x
                                 }
                             } else {
+                                val startY = pointerStartY.remove(id)
+                                val wasSwipingUp = swipingUp.remove(id)
                                 pointerX.remove(id)
-                                pointerStartY.remove(id)
+                                if (wasSwipingUp || (startY != null && change.position.y - startY < -swipeThresholdPx)) {
+                                    swipeUpTriggered = true
+                                }
                             }
                         }
 

@@ -4,13 +4,18 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.offroad.engine.SurfaceType
 import com.offroad.engine.TrackMetadata
+import com.offroad.engine.Vec2
 import kotlinx.serialization.json.Json
 
 data class TrackSummary(
     val id: String,
     val name: String,
-    val laps: Int
+    val laps: Int,
+    val defaultSurface: SurfaceType = SurfaceType.DIRT,
+    val waypoints: List<Vec2> = emptyList(),
+    val finishLinePos: Vec2? = null
 )
 
 data class LoadedTrack(
@@ -20,6 +25,7 @@ data class LoadedTrack(
 )
 
 object TrackRepository {
+    private const val BASE_MAP_SIZE_PX = 512f
     private val json = Json { ignoreUnknownKeys = true }
 
     fun listTracks(context: Context): List<TrackSummary> {
@@ -31,7 +37,14 @@ object TrackRepository {
                     .bufferedReader()
                     .use { it.readText() }
                 val meta = json.decodeFromString<TrackMetadata>(metaText)
-                TrackSummary(id = id, name = meta.name, laps = meta.laps)
+                TrackSummary(
+                    id = id,
+                    name = meta.name,
+                    laps = meta.laps,
+                    defaultSurface = meta.defaultSurface,
+                    waypoints = meta.waypoints,
+                    finishLinePos = meta.finishLine.pos
+                )
             }.getOrNull()
         }
     }
@@ -48,6 +61,11 @@ object TrackRepository {
                 ?: error("Failed to decode tracks/$trackId/track.png")
         }
 
-        return LoadedTrack(id = trackId, metadata = metadata, bitmap = bitmap)
+        val derivedScale = (bitmap.width / BASE_MAP_SIZE_PX).coerceAtLeast(0.1f)
+        return LoadedTrack(
+            id = trackId,
+            metadata = metadata.copy(worldScale = derivedScale),
+            bitmap = bitmap
+        )
     }
 }

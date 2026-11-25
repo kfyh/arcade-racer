@@ -36,14 +36,14 @@ class RaceManager(
         // 1. Step physics for each car (finished cars keep driving at a slow cooldown speed)
         val prevPositions = cars.map { it.pos }
         val updated = cars.map { car ->
-            val input = if (car.isHuman) humanInput else AiDriver.computeInput(car, track)
+            val input = if (car.isHuman && !car.finished) humanInput else AiDriver.computeInput(car, track)
             val scale = if (car.isHuman) humanTurnRateScale else 1f
-            val speedCap = if (car.finished) 0.35f else 1f
+            val speedCap = if (car.finished && car.finishedTimer >= 2.0f) 0.35f else 1f
             PhysicsStep.stepCar(car, input, track, dt, turnRateScale = scale, maxSpeedScale = speedCap)
         }.toMutableList()
 
         // 2. Car-to-car circle-circle separation
-        val minSep = (PhysicsStep.CAR_RADIUS * 2f) / track.worldScale.coerceAtLeast(1f)
+        val minSep = (PhysicsStep.CAR_RADIUS * 2f) / track.worldScale.coerceAtLeast(0.1f)
         for (i in 0 until updated.size) {
             for (j in i + 1 until updated.size) {
                 val a = updated[i]
@@ -64,13 +64,10 @@ class RaceManager(
         // 3. Waypoint & lap progression + invalid lap detection (must physically cross finish line)
         val n = track.waypoints.size
         if (n > 0) {
-            val startMid = (track.startLine.a + track.startLine.b) * 0.5f
-            // Extend finish-line gate across shoulder/off-track margin so wide slides still count
-            val lineVec = (track.startLine.b - track.startLine.a).normalized()
-            val gateHalfWidth = track.trackWidthNorm * 1.5f
-            val gateA = startMid - lineVec * gateHalfWidth
-            val gateB = startMid + lineVec * gateHalfWidth
-            val finishThreshold = track.trackWidthNorm * 0.65f
+            val (gateA, gateB) = track.finishLineSegment()
+            val invScale = 1f / track.worldScale.coerceAtLeast(0.1f)
+            val carHalfLength = 0.022f * invScale
+            val carHalfWidth = 0.014f * invScale
 
             for (i in updated.indices) {
                 var car = updated[i]
@@ -127,8 +124,14 @@ class RaceManager(
                     )
                 }
 
-                val crossedFinishLine = segmentsIntersect(prevPos, car.pos, gateA, gateB) ||
-                    car.pos.distanceTo(startMid) < finishThreshold
+                val crossedFinishLine = obbIntersectsSegment(
+                    center = car.pos,
+                    heading = car.heading,
+                    halfLength = carHalfLength,
+                    halfWidth = carHalfWidth,
+                    segA = gateA,
+                    segB = gateB
+                ) || segmentsIntersect(prevPos, car.pos, gateA, gateB)
 
                 if (car.awaitingFinishLine && crossedFinishLine) {
                     if (car.lapInvalid) {
@@ -162,6 +165,7 @@ class RaceManager(
                             currentLapTime = 0f,
                             lastLapTime = completedTime,
                             bestLapTime = newBest,
+                            lapTimes = car.lapTimes + completedTime,
                             finished = finished,
                             finishOrder = finishOrder
                         )
@@ -259,16 +263,16 @@ class RaceManager(
             for (i in wps.indices) {
                 perimeter += wps[i].distanceTo(wps[(i + 1) % wps.size])
             }
-            val effectiveSpeed = CarStats().maxSpeed / track.worldScale.coerceAtLeast(1f)
+            val effectiveSpeed = CarStats().maxSpeed / track.worldScale.coerceAtLeast(0.1f)
             return ((perimeter / effectiveSpeed) * 1.25f).coerceAtLeast(8f)
         }
 
         fun createDefaultCars(track: TrackMetadata): List<CarState> {
-            val mid = (track.startLine.a + track.startLine.b) * 0.5f
-            val h = track.startLine.heading
+            val mid = track.finishLine.pos
+            val h = track.finishLine.heading
             val fwd = Vec2(cos(h), sin(h))
             val right = Vec2(-fwd.y, fwd.x)
-            val s = 1f / track.worldScale.coerceAtLeast(1f)
+            val s = 1f / track.worldScale.coerceAtLeast(0.1f)
 
             val offsets = listOf(
                 fwd * (-0.025f * s) + right * (-0.025f * s),

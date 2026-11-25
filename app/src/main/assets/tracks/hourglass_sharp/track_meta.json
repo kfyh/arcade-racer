@@ -1,8 +1,7 @@
 {
   "name": "Sharp Hourglass (Sand)",
   "laps": 6,
-  "trackWidthNorm": 0.12,
-  "worldScale": 1.0,
+  "trackWidthNorm": 0.125,
   "defaultSurface": "SAND",
   "waypoints": [
     {
@@ -86,14 +85,10 @@
       "y": 0.59
     }
   ],
-  "startLine": {
-    "a": {
+  "finishLine": {
+    "pos": {
       "x": 0.5,
-      "y": 0.534
-    },
-    "b": {
-      "x": 0.5,
-      "y": 0.646
+      "y": 0.59
     },
     "heading": 0.0
   },
@@ -111,20 +106,6 @@
         "y": 0.5
       },
       "radius": 0.032
-    },
-    {
-      "pos": {
-        "x": 0.5,
-        "y": 0.52
-      },
-      "radius": 0.015
-    },
-    {
-      "pos": {
-        "x": 0.5,
-        "y": 0.66
-      },
-      "radius": 0.015
     }
   ],
   "ramps": [],

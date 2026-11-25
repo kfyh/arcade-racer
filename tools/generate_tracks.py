@@ -45,6 +45,10 @@ SURFACE_PALETTES = {
 
 WIDTH = 512
 HEIGHT = 512
+BASE_MAP_PX = 512
+ROAD_HALF_PX = 30.0
+SHOULDER_PAD_PX = 5.0
+TRACK_WIDTH_PX = 64.0
 ASSETS_TRACKS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "app",
@@ -238,39 +242,112 @@ def build_square_right(surface: str = "MUD") -> Dict:
 
 
 def build_d_left() -> Dict:
-    # Michigan International Speedway style D-shaped tri-oval (CCW, all left-hand turns):
-    # Straight horizontal backstretch at top; curved D-oval frontstretch at bottom with start/finish at apex
-    ctrl = [
-        (0.50, 0.82),  # start/finish at bottom tri-oval apex (heading 0.0 -> right)
-        (0.72, 0.77),  # frontstretch curve into Turn 1
-        (0.86, 0.62),  # Turn 1
-        (0.86, 0.36),  # Turn 2 exit
-        (0.70, 0.22),  # backstretch entry
-        (0.50, 0.22),  # straight backstretch
-        (0.30, 0.22),  # backstretch exit
-        (0.14, 0.36),  # Turn 3 entry
-        (0.14, 0.62),  # Turn 4
-        (0.28, 0.77),  # frontstretch dogleg back to start/finish
-    ]
-    dense = catmull_rom_closed(ctrl, steps_per_seg=14)
-    waypoints = resample_closed_polyline(dense, 16)
+    # Michigan International Speedway (CCW, all left-hand turns), 3x scale (worldScale = 3.0, 1024x1024):
+    # Flipped vertically from references/Michigan_International_Speedway_2024.svg.webp (longer curved outer loop):
+    # - Completely straight bottom spine (y = 0.71, start/finish at center)
+    # - True semicircular end turns (r = 0.21)
+    # - Gentle large-radius (R = 0.67) curved top stretch (peaking at y = 0.228), G1-tangent to both turns.
+    pts: List[Tuple[float, float]] = []
+    y_bot = 0.71
+    x_left = 0.27
+    x_right = 0.73
+    r_end = 0.21
+    cy_end = y_bot - r_end  # 0.50
+
+    # Top gentle arc joins the end turns at angle a_join = -pi/3 (-60 deg)
+    a_join = -math.pi / 3.0
+    jx_r = x_right + r_end * math.cos(a_join)  # 0.835
+    jy = cy_end + r_end * math.sin(a_join)     # ~0.3181
+    R_top = (jx_r - 0.50) / math.cos(a_join)   # 0.670
+    cy_top = jy - R_top * math.sin(a_join)     # ~0.8983 (peak at y = cy_top - R_top = ~0.2283)
+
+    def add_line(ax: float, ay: float, bx: float, by: float, steps: int = 18) -> None:
+        for i in range(steps):
+            t = i / float(steps)
+            pts.append((ax + t * (bx - ax), ay + t * (by - ay)))
+
+    def add_arc(cx: float, cy: float, r: float, a0: float, a1: float, steps: int = 36) -> None:
+        for i in range(steps):
+            a = a0 + (i / float(steps)) * (a1 - a0)
+            pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+
+    # 1. Right half of straight bottom spine: (0.50, 0.71) -> (0.73, 0.71)
+    add_line(0.50, y_bot, x_right, y_bot, steps=16)
+    # 2. Right turn (Turn 3-4 flipped): +pi/2 -> -pi/3
+    add_arc(x_right, cy_end, r_end, math.pi / 2.0, a_join, steps=40)
+    # 3. Gentle curved top stretch (longer curved frontstretch flipped): -pi/3 -> -2*pi/3
+    add_arc(0.50, cy_top, R_top, a_join, -math.pi - a_join, steps=44)
+    # 4. Left turn (Turn 1-2 flipped): -2*pi/3 -> -3*pi/2 (i.e. +pi/2)
+    add_arc(x_left, cy_end, r_end, -math.pi - a_join, -1.5 * math.pi, steps=40)
+    # 5. Left half of straight bottom spine: (0.27, 0.71) -> (0.50, 0.71)
+    add_line(x_left, y_bot, 0.50, y_bot, steps=16)
+
+    waypoints = resample_closed_polyline(pts, 32)
     waypoints = waypoints[1:] + waypoints[:1]
     pal = SURFACE_PALETTES["ASPHALT"]
     return {
         "id": "d_left",
         "name": "Michigan D-Oval (Road)",
-        "laps": 6,
+        "laps": 4,
+        "size": 1536,
         "defaultSurface": "ASPHALT",
-        "road_half": 0.064,
-        "trackWidthNorm": 0.13,
-        "dense": dense,
+        "dense": pts,
         "waypoints": waypoints,
-        "start_center": (0.50, 0.82),
+        "start_center": (0.50, y_bot),
         "start_heading": 0.0,
         "bg_rgb": pal["bg_rgb"],
         "road_rgb": pal["road_rgb"],
         "shoulder_rgb": (180, 180, 175),
-        "obstacles": [(0.50, 0.50, 0.042)],
+        "obstacles": [],
+    }
+
+
+def build_pill_small() -> Dict:
+    # Compact horizontal pill oval (CCW, worldScale = 1.0, 512x512) scaled to 0.85x around (0.50, 0.50)
+    # so it visibly sits inside the Pixel 9 Pro Fold inner screen with clear margin.
+    pts: List[Tuple[float, float]] = []
+    scale = 0.85
+    x_left = 0.50 - 0.18 * scale   # 0.347
+    x_right = 0.50 + 0.18 * scale  # 0.653
+    r_end = 0.22 * scale           # 0.187
+    cy = 0.50
+    y_bot = cy + r_end             # 0.687
+    y_top = cy - r_end             # 0.313
+
+    def add_line(ax: float, ay: float, bx: float, by: float, steps: int = 16) -> None:
+        for i in range(steps):
+            t = i / float(steps)
+            pts.append((ax + t * (bx - ax), ay + t * (by - ay)))
+
+    def add_arc(cx: float, cy_a: float, r: float, a0: float, a1: float, steps: int = 32) -> None:
+        for i in range(steps):
+            a = a0 + (i / float(steps)) * (a1 - a0)
+            pts.append((cx + r * math.cos(a), cy_a + r * math.sin(a)))
+
+    # Bottom straight -> right semicircle -> top straight -> left semicircle -> bottom straight
+    add_line(0.50, y_bot, x_right, y_bot, steps=12)
+    add_arc(x_right, cy, r_end, math.pi / 2.0, -math.pi / 2.0, steps=36)
+    add_line(x_right, y_top, x_left, y_top, steps=24)
+    add_arc(x_left, cy, r_end, -math.pi / 2.0, -1.5 * math.pi, steps=36)
+    add_line(x_left, y_bot, 0.50, y_bot, steps=12)
+
+    waypoints = resample_closed_polyline(pts, 20)
+    waypoints = waypoints[1:] + waypoints[:1]
+    pal = SURFACE_PALETTES["DIRT"]
+    return {
+        "id": "pill_small",
+        "name": "Small Pill (Dirt)",
+        "laps": 6,
+        "size": 436,
+        "defaultSurface": "DIRT",
+        "dense": pts,
+        "waypoints": waypoints,
+        "start_center": (0.50, y_bot),
+        "start_heading": 0.0,
+        "bg_rgb": pal["bg_rgb"],
+        "road_rgb": pal["road_rgb"],
+        "shoulder_rgb": pal["shoulder_rgb"],
+        "obstacles": [],
     }
 
 
@@ -312,6 +389,12 @@ def build_horseshoe() -> Dict:
         "road_rgb": pal["road_rgb"],
         "shoulder_rgb": pal["shoulder_rgb"],
         "obstacles": [(0.50, 0.27, 0.036)],
+        "ramps": [
+            # Left straight jump (outer half-width, car travels downward)
+            {"x": 0.089, "y": 0.46, "width": 0.056, "height": 0.08, "impulse": 0.45, "dir": "down"},
+            # Right straight jump (outer half-width, car travels upward)
+            {"x": 0.855, "y": 0.46, "width": 0.056, "height": 0.08, "impulse": 0.45, "dir": "up"},
+        ],
     }
 
 
@@ -360,11 +443,8 @@ def build_phillip_island() -> Dict:
         "id": "phillip_island",
         "name": "Phillip Island (Road)",
         "laps": 4,
-        "size": 1024,
-        "worldScale": 2.5,
+        "size": 1280,
         "defaultSurface": "ASPHALT",
-        "road_half": 0.026,
-        "trackWidthNorm": 0.056,
         "dense": dense,
         "waypoints": waypoints,
         "start_center": (0.42, 0.62),
@@ -414,10 +494,7 @@ def build_c_horseshoe() -> Dict:
         "name": "Grand C-Horseshoe (Dirt)",
         "laps": 4,
         "size": 1024,
-        "worldScale": 2.0,
         "defaultSurface": "DIRT",
-        "road_half": 0.030,
-        "trackWidthNorm": 0.066,
         "dense": dense,
         "waypoints": waypoints,
         "start_center": (0.48, 0.88),
@@ -429,71 +506,134 @@ def build_c_horseshoe() -> Dict:
     }
 
 
+def build_segment_grid(pts: List[Tuple[float, float]], margin: float, grid_n: int = 32):
+    """Spatial grid of polyline segments for fast per-pixel distance queries."""
+    cells: List[List[Tuple[float, float, float, float, float]]] = [[] for _ in range(grid_n * grid_n)]
+    n = len(pts)
+    for i in range(n):
+        ax, ay = pts[i]
+        bx, by = pts[(i + 1) % n]
+        abx, aby = bx - ax, by - ay
+        len_sq = abx * abx + aby * aby
+        seg = (ax, ay, bx, by, len_sq)
+        min_gx = max(0, min(grid_n - 1, int((min(ax, bx) - margin) * grid_n)))
+        max_gx = max(0, min(grid_n - 1, int((max(ax, bx) + margin) * grid_n)))
+        min_gy = max(0, min(grid_n - 1, int((min(ay, by) - margin) * grid_n)))
+        max_gy = max(0, min(grid_n - 1, int((max(ay, by) + margin) * grid_n)))
+        for gy in range(min_gy, max_gy + 1):
+            row_off = gy * grid_n
+            for gx in range(min_gx, max_gx + 1):
+                cells[row_off + gx].append(seg)
+    return cells, grid_n
+
+
 def render_and_save(spec: Dict) -> None:
     track_dir = os.path.join(ASSETS_TRACKS_DIR, spec["id"])
     png_path = os.path.join(track_dir, "track.png")
     meta_path = os.path.join(track_dir, "track_meta.json")
 
     img_size = spec.get("size", WIDTH)
-    world_scale = spec.get("worldScale", 1.0)
     dense = spec["dense"]
-    road_half = spec["road_half"]
-    shoulder_half = road_half + (0.010 / world_scale)
+    # Uniform pixel-based road thickness (~3-lane highway) across all tracks
+    road_half = ROAD_HALF_PX / float(img_size)
+    shoulder_half = (ROAD_HALF_PX + SHOULDER_PAD_PX) / float(img_size)
+    track_width_norm = round(TRACK_WIDTH_PX / float(img_size), 4)
     scx, scy = spec["start_center"]
     sh = spec["start_heading"]
-    # Perpendicular to start heading for start-line strip
-    px, py = -math.sin(sh), math.cos(sh)
-    fx, fy = math.cos(sh), math.sin(sh)
 
     bg_r, bg_g, bg_b = spec["bg_rgb"]
     rd_r, rd_g, rd_b = spec["road_rgb"]
     sh_r, sh_g, sh_b = spec["shoulder_rgb"]
 
-    # Two small finish-line gate posts on either side of the checkered line
-    post_offset = road_half + (0.014 / world_scale)
-    post_radius = round(0.015 / world_scale, 4)
-    gate_posts = [
-        (round(scx - px * post_offset, 4), round(scy - py * post_offset, 4), post_radius),
-        (round(scx + px * post_offset, 4), round(scy + py * post_offset, 4), post_radius),
-    ]
-    all_obstacles = list(spec["obstacles"]) + gate_posts
+    all_obstacles = list(spec["obstacles"])
+    ramps = list(spec.get("ramps", []))
+    cells, grid_n = build_segment_grid(dense, shoulder_half + 0.002)
 
     buf = bytearray(img_size * img_size * 3)
     for y in range(img_size):
         ny = y / float(img_size)
+        gy = min(grid_n - 1, int(ny * grid_n))
+        row_off = gy * grid_n
         for x in range(img_size):
             nx = x / float(img_size)
             noise = ((x * 73856093 ^ y * 19349663) & 0xFF) % 13 - 6
             r, g, b = bg_r + noise, bg_g + noise, bg_b + noise
 
-            d = dist_to_closed_polyline(nx, ny, dense)
-            if d < shoulder_half:
-                r, g, b = sh_r + noise // 2, sh_g + noise // 2, sh_b + noise // 2
-            if d < road_half:
-                r, g, b = rd_r + noise // 2, rd_g + noise // 2, rd_b + noise // 2
+            gx = min(grid_n - 1, int(nx * grid_n))
+            segs = cells[row_off + gx]
+            if segs:
+                best_sq = 1e9
+                for ax, ay, bx, by, len_sq in segs:
+                    if len_sq < 1e-10:
+                        dx, dy = nx - ax, ny - ay
+                    else:
+                        t = ((nx - ax) * (bx - ax) + (ny - ay) * (by - ay)) / len_sq
+                        if t < 0.0:
+                            t = 0.0
+                        elif t > 1.0:
+                            t = 1.0
+                        dx = nx - (ax + t * (bx - ax))
+                        dy = ny - (ay + t * (by - ay))
+                    d_sq = dx * dx + dy * dy
+                    if d_sq < best_sq:
+                        best_sq = d_sq
+                d = math.sqrt(best_sq)
+                if d < shoulder_half:
+                    r, g, b = sh_r + noise // 2, sh_g + noise // 2, sh_b + noise // 2
+                if d < road_half:
+                    r, g, b = rd_r + noise // 2, rd_g + noise // 2, rd_b + noise // 2
 
-            # Start/Finish checkered line across road at start_center
-            dx, dy = nx - scx, ny - scy
-            along_fwd = abs(dx * fx + dy * fy)
-            along_perp = abs(dx * px + dy * py)
-            if along_fwd <= (0.014 / world_scale) and along_perp <= road_half:
-                checker = ((x // 8) + (y // 8)) % 2 == 0
-                if checker:
-                    r, g, b = 245, 245, 245
+            for ramp in ramps:
+                rx, ry, rw, rh = ramp["x"], ramp["y"], ramp["width"], ramp["height"]
+                rdir = ramp.get("dir", "up")
+                lip_shadow = 0.016
+                side_shadow = 0.008
+
+                # Progress along ramp slope: 0.0 at ground entry -> 1.0 at high launch lip
+                if rdir == "down":
+                    in_ramp = rx <= nx <= rx + rw and ry <= ny <= ry + rh
+                    slope_t = (ny - ry) / max(rh, 1e-6)
+                    in_lip_shadow = (rx + 0.002 <= nx <= rx + rw + side_shadow) and (ry + rh < ny <= ry + rh + lip_shadow)
+                    in_side_shadow = (rx + rw < nx <= rx + rw + side_shadow) and (ry + 0.006 <= ny <= ry + rh)
+                    shadow_dist = (ny - (ry + rh)) / lip_shadow if in_lip_shadow else (nx - (rx + rw)) / side_shadow
                 else:
-                    r, g, b = 30, 30, 30
+                    in_ramp = rx <= nx <= rx + rw and ry <= ny <= ry + rh
+                    slope_t = (ry + rh - ny) / max(rh, 1e-6)
+                    in_lip_shadow = (rx + 0.002 <= nx <= rx + rw + side_shadow) and (ry - lip_shadow <= ny < ry)
+                    in_side_shadow = (rx + rw < nx <= rx + rw + side_shadow) and (ry <= ny <= ry + rh - 0.006)
+                    shadow_dist = (ry - ny) / lip_shadow if in_lip_shadow else (nx - (rx + rw)) / side_shadow
+
+                if in_ramp:
+                    tx = (nx - rx) / max(rw, 1e-6)
+                    # Side rails for crisp ramp edges
+                    if tx < 0.08 or tx > 0.92:
+                        r, g, b = 96, 62, 34
+                    elif slope_t > 0.93:
+                        # Bright launch lip edge
+                        r, g, b = 235, 195, 130
+                    else:
+                        # Slope gradient (darker at base, brighter near lip) + subtle plank texture
+                        plank = int(slope_t * 8) % 2 == 0
+                        plank_delta = 10 if plank else -6
+                        lift = int(slope_t * 58)
+                        r = 136 + lift + plank_delta + noise // 2
+                        g = 92 + int(lift * 0.85) + plank_delta + noise // 2
+                        b = 48 + int(lift * 0.65) + noise // 2
+
+                        # Directional chevron pointing toward launch lip
+                        chevron_y = 0.68 - abs(tx - 0.5) * 0.45
+                        if abs(slope_t - chevron_y) < 0.07 and 0.22 < tx < 0.78:
+                            r, g, b = 242, 206, 92
+                elif in_lip_shadow or in_side_shadow:
+                    # Drop shadow cast onto the road beneath the raised lip/edge
+                    atten = max(0.35, min(0.75, 0.38 + 0.38 * shadow_dist))
+                    r = int(r * atten)
+                    g = int(g * atten)
+                    b = int(b * atten)
 
             for ox, oy, orad in spec["obstacles"]:
                 if math.hypot(nx - ox, ny - oy) <= orad:
                     r, g, b = 78, 74, 70
-
-            for ox, oy, orad in gate_posts:
-                d_post = math.hypot(nx - ox, ny - oy)
-                if d_post <= orad:
-                    if d_post <= orad * 0.65:
-                        r, g, b = 240, 95, 35
-                    else:
-                        r, g, b = 245, 245, 245
 
             idx = (y * img_size + x) * 3
             buf[idx] = max(0, min(255, r))
@@ -505,19 +645,19 @@ def render_and_save(spec: Dict) -> None:
     meta = {
         "name": spec["name"],
         "laps": spec["laps"],
-        "trackWidthNorm": spec["trackWidthNorm"],
-        "worldScale": world_scale,
+        "trackWidthNorm": track_width_norm,
         "defaultSurface": spec.get("defaultSurface", "DIRT"),
         "waypoints": [{"x": round(wx, 4), "y": round(wy, 4)} for (wx, wy) in spec["waypoints"]],
-        "startLine": {
-            "a": {"x": round(scx - px * road_half, 4), "y": round(scy - py * road_half, 4)},
-            "b": {"x": round(scx + px * road_half, 4), "y": round(scy + py * road_half, 4)},
+        "finishLine": {
+            "pos": {"x": round(scx, 4), "y": round(scy, 4)},
             "heading": round(sh, 4),
         },
         "obstacles": [
             {"pos": {"x": ox, "y": oy}, "radius": orad} for (ox, oy, orad) in all_obstacles
         ],
-        "ramps": [],
+        "ramps": [
+            {k: v for k, v in ramp.items() if k != "dir"} for ramp in ramps
+        ],
         "gaps": [],
         "surfaces": [],
     }
@@ -528,11 +668,11 @@ def render_and_save(spec: Dict) -> None:
 
 
 if __name__ == "__main__":
-    extra_surfaces = random.sample(["SAND", "MUD", "ICE"], 2)
     builders = [
-        build_hourglass_sharp(extra_surfaces[0]),
-        build_square_right(extra_surfaces[1]),
+        build_hourglass_sharp("SAND"),
+        build_square_right("ICE"),
         build_d_left(),
+        build_pill_small(),
         build_horseshoe(),
         build_c_horseshoe(),
         build_phillip_island(),

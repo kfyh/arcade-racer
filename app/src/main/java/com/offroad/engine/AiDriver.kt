@@ -18,14 +18,14 @@ object AiDriver {
         val segDir = (nextWp - wp).normalized()
         val perp = Vec2(-segDir.y, segDir.x)
         val hash = ((car.id * 73856093) xor (wpIdx * 19349663)) and 0xFF
-        val jitter = ((hash / 255f) * 2f - 1f) * (0.014f / track.worldScale.coerceAtLeast(1f))
+        val jitter = ((hash / 255f) * 2f - 1f) * (0.014f / track.worldScale.coerceAtLeast(0.1f))
         val target = wp + perp * jitter
 
         val toTarget = target - car.pos
         if (toTarget.lengthSquared() < 1e-6f) return InputState()
 
         // Compensate slightly for sideways drift so AI stays near the middle of the road
-        val steerVec = toTarget.normalized() - car.vel * (0.45f * track.worldScale.coerceAtLeast(1f))
+        val steerVec = toTarget.normalized() - car.vel * (0.45f * track.worldScale.coerceAtLeast(0.1f))
         val desiredAngle = atan2(steerVec.y, steerVec.x)
         val angleDiff = normalizeAngle(desiredAngle - car.heading)
 

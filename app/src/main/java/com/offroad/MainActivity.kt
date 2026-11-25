@@ -63,6 +63,15 @@ class MainActivity : ComponentActivity() {
                             inGame = false
                             keyInput = InputState()
                             activeTrack = null
+                        },
+                        onNextTrack = {
+                            if (tracks.isNotEmpty()) {
+                                val currentIdx = tracks.indexOfFirst { it.id == current.id }
+                                val nextSummary = tracks[(currentIdx + 1) % tracks.size]
+                                selectedTrackId = nextSummary.id
+                                keyInput = InputState()
+                                activeTrack = TrackRepository.loadTrack(context, nextSummary.id)
+                            }
                         }
                     )
                 }
